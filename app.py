@@ -37,23 +37,31 @@ def init_db():
             client_name TEXT NOT NULL,
             title       TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
+            engineer    TEXT NOT NULL DEFAULT '',
             priority    TEXT NOT NULL CHECK (priority IN ('Low','Medium','High')),
             status      TEXT NOT NULL CHECK (status IN ('Open','In Progress','Resolved')),
             reported_at TEXT NOT NULL
         )""")
+    columns = {row[1] for row in con.execute("PRAGMA table_info(issues)")}
+    if "engineer" not in columns:
+        con.execute("ALTER TABLE issues ADD COLUMN engineer TEXT NOT NULL DEFAULT ''")
+        con.execute(
+            "UPDATE issues SET status='In Progress' "
+            "WHERE status='Resolved' AND TRIM(engineer)=''"
+        )
     if con.execute("SELECT COUNT(*) FROM issues").fetchone()[0] == 0:
-        samples = [  # (client, title, description, priority, status, hours ago)
-            ("Acme Logistics", "Cannot export invoices to PDF", "Export button spins forever.", "High", "Open", 52),
-            ("Brightwave Media", "Login page slow in the morning", "Takes ~15s to load.", "Medium", "In Progress", 30),
-            ("Cedar Health", "Wrong date format in reports", "Shows MM/DD instead of DD/MM.", "Low", "Open", 6),
-            ("Delta Retail", "Payment webhook failing", "Receiving 500 errors since update.", "High", "In Progress", 5),
-            ("Evergreen Bank", "User role not saving", "Admin role resets after save.", "High", "Resolved", 70),
+        samples = [  # (client, title, description, engineer, priority, status, hours ago)
+            ("Acme Logistics", "Cannot export invoices to PDF", "Export button spins forever.", "John Doe", "High", "Open", 52),
+            ("Brightwave Media", "Login page slow in the morning", "Takes ~15s to load.", "Jane Smith", "Medium", "In Progress", 30),
+            ("Cedar Health", "Wrong date format in reports", "Shows MM/DD instead of DD/MM.", "Bob Johnson", "Low", "Open", 6),
+            ("Delta Retail", "Payment webhook failing", "Receiving 500 errors since update.", "Alice Williams", "High", "In Progress", 5),
+            ("Evergreen Bank", "User role not saving", "Admin role resets after save.", "Charlie Brown", "High", "Resolved", 70),
         ]
-        for c, t, d, p, s, h in samples:
+        for c, t, d, e, p, s, h in samples:
             ts = (now_utc() - timedelta(hours=h)).isoformat(timespec="seconds")
             con.execute(
-                "INSERT INTO issues (client_name,title,description,priority,status,reported_at) VALUES (?,?,?,?,?,?)",
-                (c, t, d, p, s, ts))
+                "INSERT INTO issues (client_name,title,description,engineer,priority,status,reported_at) VALUES (?,?,?,?,?,?,?)",
+                (c, t, d, e, p, s, ts))
     con.commit()
     con.close()
 
@@ -69,6 +77,7 @@ def to_dict(row):
         "client_name": row["client_name"],
         "title": row["title"],
         "description": row["description"],
+        "engineer": row["engineer"],
         "priority": row["priority"],
         "status": row["status"],
         "reported_at": row["reported_at"],
@@ -90,6 +99,12 @@ def validate(data, partial=False):
                 clean[f] = v
     if "description" in data or not partial:
         clean["description"] = str(data.get("description", "")).strip()[:5000]
+    if "engineer" in data or not partial:
+        engineer = str(data.get("engineer", "")).strip()
+        if len(engineer) > 200:
+            errors["engineer"] = "Assigned Engineer must be 200 characters or fewer."
+        else:
+            clean["engineer"] = engineer
     if "priority" in data or not partial:
         if data.get("priority") not in PRIORITIES:
             errors["priority"] = "Priority must be Low, Medium or High."
@@ -100,6 +115,8 @@ def validate(data, partial=False):
             errors["status"] = "Status must be Open, In Progress or Resolved."
         else:
             clean["status"] = data.get("status", "Open")
+    if clean.get("status") == "Resolved" and not clean.get("engineer", "").strip():
+        errors["engineer"] = "Select an Assigned Engineer before resolving this issue."
     return clean, errors
 
 
@@ -126,6 +143,10 @@ def list_issues():
     if request.args.get("status") in STATUSES:
         sql += " AND status=?"
         params.append(request.args["status"])
+    engineer = request.args.get("engineer", "").strip()
+    if engineer:
+        sql += " AND engineer LIKE ? COLLATE NOCASE"
+        params.append(f"%{engineer}%")
     sql += " ORDER BY reported_at DESC, id DESC"
     rows = get_db().execute(sql, params).fetchall()
     return jsonify([to_dict(r) for r in rows])
@@ -139,17 +160,23 @@ def create_issue():
     clean["reported_at"] = now_utc().isoformat(timespec="seconds")  # set by server
     db = get_db()
     cur = db.execute(
-        "INSERT INTO issues (client_name,title,description,priority,status,reported_at) "
-        "VALUES (:client_name,:title,:description,:priority,:status,:reported_at)", clean)
+        "INSERT INTO issues (client_name,title,description,engineer,priority,status,reported_at) "
+        "VALUES (:client_name,:title,:description,:engineer,:priority,:status,:reported_at)", clean)
     db.commit()
     return jsonify(to_dict(fetch(cur.lastrowid))), 201
 
 
 @app.route("/api/issues/<int:issue_id>", methods=["PUT", "PATCH"])
 def update_issue(issue_id):
-    if fetch(issue_id) is None:
+    existing = fetch(issue_id)
+    if existing is None:
         return jsonify(errors={"_": "Issue not found."}), 404
     clean, errors = validate(request.get_json(silent=True) or {}, partial=(request.method == "PATCH"))
+    if not errors:
+        status = clean.get("status", existing["status"])
+        engineer = clean.get("engineer", existing["engineer"])
+        if status == "Resolved" and not engineer.strip():
+            errors["engineer"] = "Select an Assigned Engineer before resolving this issue."
     if errors:
         return jsonify(errors=errors), 400
     if clean:

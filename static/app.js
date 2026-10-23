@@ -28,6 +28,7 @@ async function api(url, opts = {}) {
 async function load() {
   const p = new URLSearchParams();
   if ($("search").value.trim()) p.set("search", $("search").value.trim());
+  if ($("fEngineer").value.trim()) p.set("engineer", $("fEngineer").value.trim());
   if ($("fPriority").value) p.set("priority", $("fPriority").value);
   if ($("fStatus").value) p.set("status", $("fStatus").value);
   try {
@@ -50,6 +51,7 @@ function render(issues) {
       <td><div class="title">${esc(i.title)}</div>
           ${i.description ? `<div class="desc">${esc(i.description)}</div>` : ""}
           ${i.needs_attention ? `<span class="flag">Overdue: high priority, open over 24h</span>` : ""}</td>
+      <td>${i.engineer ? esc(i.engineer) : "Unassigned"}</td>
       <td class="pri ${i.priority}">${i.priority}</td>
       <td><select data-status="${i.id}" aria-label="Status for ${esc(i.issue_id)}">
         ${["Open", "In Progress", "Resolved"].map((s) =>
@@ -75,6 +77,7 @@ function openForm(issue) {
   f.client_name.value = issue ? issue.client_name : "";
   f.title.value = issue ? issue.title : "";
   f.description.value = issue ? issue.description : "";
+  f.engineer.value = issue ? issue.engineer : "";
   f.priority.value = issue ? issue.priority : "Medium";
   f.status.value = issue ? issue.status : "Open";
   $("reportedInfo").textContent = issue ? `Reported ${fmt(issue.reported_at)}` : "The report time is recorded when you save.";
@@ -87,7 +90,7 @@ $("issueForm").addEventListener("submit", async (ev) => {
   clearErrors();
   const f = ev.target;
   const body = Object.fromEntries(
-    ["client_name", "title", "description", "priority", "status"].map((k) => [k, f[k].value]));
+    ["client_name", "title", "description", "engineer", "priority", "status"].map((k) => [k, f[k].value]));
   try {
     if (state.editingId) {
       await api(`/api/issues/${state.editingId}`, { method: "PUT", body });
@@ -125,7 +128,8 @@ $("rows").addEventListener("change", async (ev) => {
     await api(`/api/issues/${sel.dataset.status}`, { method: "PATCH", body: { status: sel.value } });
     toast(`Status changed to ${sel.value}`);
   } catch (e) {
-    toast("Could not change status");
+    const message = e.errors && (e.errors.engineer || e.errors.status);
+    toast(message || "Could not change status");
   }
   load();
 });
@@ -146,10 +150,11 @@ $("addBtn").onclick = () => openForm(null);
 $("cancelBtn").onclick = () => $("formDlg").close();
 $("delCancel").onclick = () => $("delDlg").close();
 $("clearBtn").onclick = () => {
-  $("search").value = ""; $("fPriority").value = ""; $("fStatus").value = ""; load();
+  $("search").value = ""; $("fEngineer").value = ""; $("fPriority").value = ""; $("fStatus").value = ""; load();
 };
 let debounce;
 $("search").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(load, 250); });
+$("fEngineer").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(load, 250); });
 $("fPriority").addEventListener("change", load);
 $("fStatus").addEventListener("change", load);
 
