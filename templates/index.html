@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support Issue Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Support Issue Tracker</h1>
+      <p class="sub">Northgate Software · client support desk</p>
+    </div>
+    <button id="addBtn" class="btn primary">New issue</button>
+  </header>
+
+  <main>
+    <section class="toolbar" aria-label="Search and filters">
+      <input id="search" type="search" placeholder="Search client or issue title" aria-label="Search">
+      <select id="fPriority" aria-label="Filter by priority">
+        <option value="">All priorities</option><option>Low</option><option>Medium</option><option>High</option>
+      </select>
+      <select id="fStatus" aria-label="Filter by status">
+        <option value="">All statuses</option><option>Open</option><option>In Progress</option><option>Resolved</option>
+      </select>
+      <button id="clearBtn" class="btn">Clear</button>
+    </section>
+
+    <p id="summary" class="summary" aria-live="polite"></p>
+    <p class="legend"><span class="swatch"></span> High priority, unresolved, reported over 24 hours ago</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Client</th><th>Issue</th><th>Priority</th><th>Status</th><th>Reported</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="empty" class="empty" hidden>No issues match. Change the filters or add a new issue.</p>
+    </div>
+  </main>
+
+  <dialog id="formDlg">
+    <form id="issueForm" novalidate>
+      <h2 id="formTitle">New issue</h2>
+      <label>Client name<input name="client_name" maxlength="200" required><span class="err" data-for="client_name"></span></label>
+      <label>Issue title<input name="title" maxlength="200" required><span class="err" data-for="title"></span></label>
+      <label>Description<textarea name="description" rows="4"></textarea></label>
+      <div class="two">
+        <label>Priority
+          <select name="priority"><option>Low</option><option selected>Medium</option><option>High</option></select>
+        </label>
+        <label>Status
+          <select name="status"><option>Open</option><option>In Progress</option><option>Resolved</option></select>
+        </label>
+      </div>
+      <p id="reportedInfo" class="sub"></p>
+      <div class="actions">
+        <button type="button" class="btn" id="cancelBtn">Cancel</button>
+        <button type="submit" class="btn primary">Save issue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="delDlg">
+    <h2>Delete this issue?</h2>
+    <p id="delText"></p>
+    <div class="actions">
+      <button class="btn" id="delCancel">Keep issue</button>
+      <button class="btn danger" id="delConfirm">Delete issue</button>
+    </div>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
